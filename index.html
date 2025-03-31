@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全球天气</title>
+    <style>
+        :root {
+            --card-bg: rgba(255, 255, 255, 0.9);
+            --text-dark: #2c3e50;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui;
+            min-height: 100vh;
+            background-size: cover;
+            background-position: center;
+            transition: background-image 0.5s;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .datetime {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: var(--text-dark);
+            text-shadow: var(--shadow);
+        }
+
+        .weather-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            padding: 1rem;
+        }
+
+        .weather-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            backdrop-filter: blur(8px);
+            box-shadow: var(--shadow);
+            transition: transform 0.3s;
+        }
+
+        .weather-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .city-name {
+            font-size: 1.4rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .local-time {
+            color: #666;
+            margin-bottom: 1rem;
+        }
+
+        .temperature {
+            font-size: 2.2rem;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .weather-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .weather-card {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="datetime" id="datetime"></div>
+        <div class="weather-grid" id="weatherGrid"></div>
+    </div>
+
+    <script>
+        // 配置参数
+        const CONFIG = {
+            apiKey: '119df4ccdae13332a1872c9698b14a62',
+            cities: [
+                { name: '中山市', query: 'Zhongshan,CN' },
+                { name: '北京市', query: 'Beijing,CN' },
+                { name: '东京市', query: 'Tokyo,JP' },
+                { name: '伦敦市', query: 'London,GB' },
+                { name: '纽约市', query: 'New York,US' }
+            ]
+        };
+
+        // 时间格式化
+        function formatDateTime(timestamp, timezone) {
+            const date = new Date((timestamp + timezone) * 1000);
+            return date.toLocaleString('zh-CN', {
+                timeZone: 'UTC',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        // 获取天气数据
+        async function fetchWeatherData(cityQuery) {
+            try {
+                const response = await fetch(
+                    `https://api.openweathermap.org/data/2.5/weather?q=${cityQuery}&units=metric&appid=${CONFIG.apiKey}`
+                );
+                return await response.json();
+            } catch (error) {
+                console.error('获取天气数据失败:', error);
+                return null;
+            }
+        }
+
+        // 获取百度背景图片
+        async function getBaiduImage(keyword) {
+            const timestamp = Date.now();
+            try {
+                const response = await fetch(
+                    `https://image.baidu.com/search/acjson?tn=resultjson_com&word=${encodeURIComponent(keyword)}&timestamp=${timestamp}`
+                );
+                const data = await response.json();
+                return data.data?.?.thumbURL || '';
+            } catch (error) {
+                console.error('图片获取失败:', error);
+                return '';
+            }
+        }
+
+        // 创建天气卡片
+        function createWeatherCard(data) {
+            const card = document.createElement('div');
+            card.className = 'weather-card';
+            
+            card.innerHTML = `
+                <div class="city-name">${data.name}</div>
+                <div class="local-time">${formatDateTime(data.dt, data.timezone)}</div>
+                <div class="temperature">${Math.round(data.main.temp)}°C</div>
+                <div>天气: ${data.weather.description}</div>
+                <div>湿度: ${data.main.humidity}%</div>
+                <div>风速: ${data.wind.speed} m/s</div>
+            `;
+            
+            return card;
+        }
+
+        // 更新背景
+        async function updateBackground(weatherData) {
+            const keyword = `${weatherData.weather.description}+天气`;
+            const imgUrl = await getBaiduImage(keyword);
+            if (imgUrl) {
+                document.body.style.backgroundImage = `url(${imgUrl})`;
+            }
+        }
+
+        // 初始化应用
+        async function initApp() {
+            // 获取所有城市数据
+            const weatherData = await Promise.all(
+                CONFIG.cities.map(city => fetchWeatherData(city.query))
+            );
+
+            // 更新中山市背景
+            const zhongshanData = weatherData.find(data => data?.name === 'Zhongshan');
+            if (zhongshanData) {
+                await updateBackground(zhongshanData);
+            }
+
+            // 渲染天气卡片
+            const grid = document.getElementById('weatherGrid');
+            weatherData.forEach((data, index) => {
+                if (data) {
+                    data.name = CONFIG.cities[index].name; // 本地化城市名称
+                    grid.appendChild(createWeatherCard(data));
+                }
+            });
+
+            // 实时更新时间
+            setInterval(() => {
+                document.querySelectorAll('.local-time').forEach((el, index) => {
+                    const data = weatherData[index];
+                    if (data) {
+                        el.textContent = formatDateTime(Math.floor(Date.now()/1000), data.timezone);
+                    }
+                });
+            }, 1000);
+        }
+
+        // 启动应用
+        initApp();
+    </script>
+</body>
+</html>
